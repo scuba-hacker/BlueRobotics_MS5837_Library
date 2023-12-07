@@ -31,7 +31,7 @@ bool MS5837::begin(TwoWire &wirePort) {
 	return (init(wirePort));
 }
 
-bool MS5837::init(TwoWire &wirePort);
+bool MS5837::init(TwoWire &wirePort)
 {
 	_i2cPort = &wirePort; //Grab which port the user wants us to use
 	// Reset the MS5837, per datasheet
