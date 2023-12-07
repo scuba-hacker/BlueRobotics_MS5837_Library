@@ -47,7 +47,7 @@ bool MS5837::init(TwoWire &wirePort)
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_PROM_READ+i*2);
 		_i2cPort->endTransmission();
-		_i2cPort->requestFrom(MS5837_ADDR,(int)2);
+		_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)2);
 		C[i] = (_i2cPort->read() << 8) | _i2cPort->read();
 	}
 
@@ -158,7 +158,7 @@ void MS5837::retrieveD1ConversionAndRequestD2Conversion()
 		_i2cPort->write(MS5837_ADC_READ);
 		_i2cPort->endTransmission();
 
-		_i2cPort->requestFrom(MS5837_ADDR,(int)3);
+		_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
 		D1_pres = 0;
 		D1_pres = _i2cPort->read();
 		D1_pres = (D1_pres << 8) | _i2cPort->read();
@@ -181,7 +181,7 @@ void MS5837::retrieveD2ConversionAndCalculate()
 		_i2cPort->write(MS5837_ADC_READ);
 		_i2cPort->endTransmission();
 
-		_i2cPort->requestFrom(MS5837_ADDR,(int)3);
+		_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
 		D2_temp = 0;
 		D2_temp = _i2cPort->read();
 		D2_temp = (D2_temp << 8) | _i2cPort->read();
@@ -207,7 +207,7 @@ void MS5837::read() {
 	_i2cPort->write(MS5837_ADC_READ);
 	_i2cPort->endTransmission();
 
-	_i2cPort->requestFrom(MS5837_ADDR,(int)3);
+	_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
 	D1_pres = 0;
 	D1_pres = _i2cPort->read();
 	D1_pres = (D1_pres << 8) | _i2cPort->read();
@@ -224,7 +224,7 @@ void MS5837::read() {
 	_i2cPort->write(MS5837_ADC_READ);
 	_i2cPort->endTransmission();
 
-	_i2cPort->requestFrom(MS5837_ADDR,(int)3);
+	_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
 	D2_temp = 0;
 	D2_temp = _i2cPort->read();
 	D2_temp = (D2_temp << 8) | _i2cPort->read();
