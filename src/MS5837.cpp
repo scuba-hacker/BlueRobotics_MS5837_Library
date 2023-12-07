@@ -1,5 +1,4 @@
 #include "MS5837.h"
-#include <Wire.h>
 
 const uint8_t MS5837_ADDR = 0x76;
 const uint8_t MS5837_RESET = 0x1E;
@@ -8,6 +7,8 @@ const uint8_t MS5837_PROM_READ = 0xA0;
 const uint8_t MS5837_CONVERT_D1_8192 = 0x4A;
 const uint8_t MS5837_CONVERT_D2_8192 = 0x5A;
 
+#define MS5837_CONVERSION_PERIOD  20		// delay needed for conversion according to data sheet
+
 const float MS5837::Pa = 100.0f;
 const float MS5837::bar = 0.001f;
 const float MS5837::mbar = 1.0f;
@@ -15,22 +16,24 @@ const float MS5837::mbar = 1.0f;
 const uint8_t MS5837::MS5837_30BA = 0;
 const uint8_t MS5837::MS5837_02BA = 1;
 const uint8_t MS5837::MS5837_UNRECOGNISED = 255;
-
 const uint8_t MS5837_02BA01 = 0x00; // Sensor version: From MS5837_02BA datasheet Version PROM Word 0
 const uint8_t MS5837_02BA21 = 0x15; // Sensor version: From MS5837_02BA datasheet Version PROM Word 0
 const uint8_t MS5837_30BA26 = 0x1A; // Sensor version: From MS5837_30BA datasheet Version PROM Word 0
 
+
 MS5837::MS5837() {
 	fluidDensity = 1029;
+	next_state_event_time = 0;
+	read_sensor_state = READ_INIT;
 }
 
 bool MS5837::begin(TwoWire &wirePort) {
 	return (init(wirePort));
 }
 
-bool MS5837::init(TwoWire &wirePort) {
+bool MS5837::init()
+{
 	_i2cPort = &wirePort; //Grab which port the user wants us to use
-
 	// Reset the MS5837, per datasheet
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_RESET);
@@ -44,7 +47,6 @@ bool MS5837::init(TwoWire &wirePort) {
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_PROM_READ+i*2);
 		_i2cPort->endTransmission();
-
 		_i2cPort->requestFrom(MS5837_ADDR,2);
 		C[i] = (_i2cPort->read() << 8) | _i2cPort->read();
 	}
@@ -56,9 +58,7 @@ bool MS5837::init(TwoWire &wirePort) {
 	if ( crcCalculated != crcRead ) {
 		return false; // CRC fail
 	}
-
 	uint8_t version = (C[0] >> 5) & 0x7F; // Extract the sensor version from PROM Word 0
-
 	// Set _model according to the sensor version
 	if (version == MS5837_02BA01)
 	{
@@ -80,6 +80,7 @@ bool MS5837::init(TwoWire &wirePort) {
 	// the sensor version is unrecognised.
 	// (The MS5637 has the same address as the MS5837 and will also pass the CRC check)
 	// (but will hopefully be unrecognised.)
+
 	return true;
 }
 
@@ -95,13 +96,106 @@ void MS5837::setFluidDensity(float density) {
 	fluidDensity = density;
 }
 
-void MS5837::read() {
-	//Check that _i2cPort is not NULL (i.e. has the user forgoten to call .init or .begin?)
-	if (_i2cPort == NULL)
+MS5837::read_state MS5837::readAsync()
+{
+	switch(read_sensor_state)
 	{
-		return;
+		case READ_INIT:
+		case READ_COMPLETE:
+		{
+			requestD1Conversion();
+			break;
+		}
+		case PENDING_D1_CONVERSION:
+		{
+			retrieveD1ConversionAndRequestD2Conversion();
+			break;
+		}
+		case PENDING_D2_CONVERSION:
+		{
+			retrieveD2ConversionAndCalculate();
+			break;
+		}
+		default:
+		{
+			break;
+		}
 	}
 
+	return read_sensor_state;
+}
+
+void MS5837::read()
+{
+	//Check that _i2cPort is not NULL (i.e. has the user forgoten to call .init or .begin?)
+	if (_i2cPort == NULL)
+		return;
+
+	requestD1Conversion();
+	delay(MS5837_CONVERSION_PERIOD);
+	retrieveD1ConversionAndRequestD2Conversion();
+	delay(MS5837_CONVERSION_PERIOD);
+	retrieveD2ConversionAndCalculate();
+}
+
+void MS5837::requestD1Conversion()
+{
+	if ((read_sensor_state == READ_COMPLETE || read_sensor_state == READ_INIT) && millis() >= next_state_event_time)
+	{
+		_i2cPort->beginTransmission(MS5837_ADDR);
+		_i2cPort->write(MS5837_CONVERT_D1_8192);
+		_i2cPort->endTransmission();
+		read_sensor_state = PENDING_D1_CONVERSION;
+		next_state_event_time = millis() + MS5837_CONVERSION_PERIOD;
+	}
+}
+
+void MS5837::retrieveD1ConversionAndRequestD2Conversion()
+{
+	if (read_sensor_state == PENDING_D1_CONVERSION && millis() >= next_state_event_time)
+	{
+		_i2cPort->beginTransmission(MS5837_ADDR);
+		_i2cPort->write(MS5837_ADC_READ);
+		_i2cPort->endTransmission();
+
+		_i2cPort->requestFrom(MS5837_ADDR,3);
+		D1_pres = 0;
+		D1_pres = _i2cPort->read();
+		D1_pres = (D1_pres << 8) | _i2cPort->read();
+		D1_pres = (D1_pres << 8) | _i2cPort->read();
+
+		_i2cPort->beginTransmission(MS5837_ADDR);
+		_i2cPort->write(MS5837_CONVERT_D2_8192);
+		_i2cPort->endTransmission();
+
+		read_sensor_state = PENDING_D2_CONVERSION;
+		next_state_event_time = millis() + MS5837_CONVERSION_PERIOD;
+	}
+}
+
+void MS5837::retrieveD2ConversionAndCalculate()
+{
+	if (read_sensor_state == PENDING_D2_CONVERSION && millis() >= next_state_event_time)
+	{
+		_i2cPort->beginTransmission(MS5837_ADDR);
+		_i2cPort->write(MS5837_ADC_READ);
+		_i2cPort->endTransmission();
+
+		_i2cPort->requestFrom(MS5837_ADDR,3);
+		D2_temp = 0;
+		D2_temp = _i2cPort->read();
+		D2_temp = (D2_temp << 8) | _i2cPort->read();
+		D2_temp = (D2_temp << 8) | _i2cPort->read();
+
+		calculate();
+
+		read_sensor_state = READ_COMPLETE;
+		next_state_event_time = millis();
+	}
+}
+
+/*
+void MS5837::read() {
 	// Request D1 conversion
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_CONVERT_D1_8192);
@@ -138,9 +232,10 @@ void MS5837::read() {
 
 	calculate();
 }
+*/
 
 void MS5837::calculate() {
-	// Given C1-C6 and D1, D2, calculated TEMP and P
+	// Given C1-C6 and D1_pres, D2_temp, calculated TEMP and P
 	// Do conversion first and then second order temp compensation
 
 	int32_t dT = 0;
@@ -153,7 +248,7 @@ void MS5837::calculate() {
 	int64_t SENS2 = 0;
 
 	// Terms called
-	dT = D2_temp-uint32_t(C[5])*256l;
+	dT = D2_temp_temp-uint32_t(C[5])*256l;
 	if ( _model == MS5837_02BA ) {
 		SENS = int64_t(C[1])*65536l+(int64_t(C[3])*dT)/128l;
 		OFF = int64_t(C[2])*131072l+(int64_t(C[4])*dT)/64l;
@@ -200,28 +295,24 @@ void MS5837::calculate() {
 		P = (((D1_pres*SENS2)/2097152l-OFF2)/32768l);
 	} else {
 		P = (((D1_pres*SENS2)/2097152l-OFF2)/8192l);
+
+//    P = (P/10.04 + float(millis() % 2581))*10.04;
 	}
 }
 
 float MS5837::pressure(float conversion) {
-	if ( _model == MS5837_02BA ) {
-		return P*conversion/100.0f;
-	}
-	else {
-		return P*conversion/10.0f;
-	}
+    if ( _model == MS5837_02BA ) {
+        return P*conversion/100.0f;
+    }
+    else {
+        return P*conversion/10.0f;
+    }
 }
 
 float MS5837::temperature() {
 	return TEMP/100.0f;
 }
 
-// The pressure sensor measures absolute pressure, so it will measure the atmospheric pressure + water pressure
-// We subtract the atmospheric pressure to calculate the depth with only the water pressure
-// The average atmospheric pressure of 101300 pascal is used for the calcuation, but atmospheric pressure varies
-// If the atmospheric pressure is not 101300 at the time of reading, the depth reported will be offset
-// In order to calculate the correct depth, the actual atmospheric pressure should be measured once in air, and
-// that value should subtracted for subsequent depth calculations.
 float MS5837::depth() {
 	return (pressure(MS5837::Pa)-101300)/(fluidDensity*9.80665);
 }

@@ -42,6 +42,8 @@ THE SOFTWARE.
 
 class MS5837 {
 public:
+	enum read_state {READ_INIT, PENDING_D1_CONVERSION, PENDING_D2_CONVERSION, READ_COMPLETE};
+
 	static const float Pa;
 	static const float bar;
 	static const float mbar;
@@ -51,6 +53,7 @@ public:
 	static const uint8_t MS5837_UNRECOGNISED;
 
 	MS5837();
+
 
 	bool init(TwoWire &wirePort = Wire);
 	bool begin(TwoWire &wirePort = Wire); // Calls init()
@@ -69,6 +72,8 @@ public:
 	/** The read from I2C takes up to 40 ms, so use sparingly is possible.
 	 */
 	void read();
+
+	read_state readAsync();
 
 	/** Pressure returned in mbar or mbar*conversion rate.
 	 */
@@ -89,6 +94,9 @@ public:
 
 private:
 
+	uint32_t next_state_event_time;
+	read_state read_sensor_state;
+
 	//This stores the requested i2c port
 	TwoWire * _i2cPort;
 
@@ -99,6 +107,10 @@ private:
 	uint8_t _model;
 
 	float fluidDensity;
+
+	void requestD1Conversion();
+	void retrieveD1ConversionAndRequestD2Conversion();
+	void retrieveD2ConversionAndCalculate();
 
 	/** Performs calculations per the sensor data sheet for conversion and
 	 *  second order compensation.
