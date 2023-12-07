@@ -248,7 +248,7 @@ void MS5837::calculate() {
 	int64_t SENS2 = 0;
 
 	// Terms called
-	dT = D2_temp_temp-uint32_t(C[5])*256l;
+	dT = D2_temp-uint32_t(C[5])*256l;
 	if ( _model == MS5837_02BA ) {
 		SENS = int64_t(C[1])*65536l+(int64_t(C[3])*dT)/128l;
 		OFF = int64_t(C[2])*131072l+(int64_t(C[4])*dT)/64l;
