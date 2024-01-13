@@ -69,9 +69,14 @@ public:
 	 */
 	void setFluidDensity(float density);
 
+	void setFluidDensityFreshWater();
+
+	void setFluidDensitySaltWater();
+
 	/** The read from I2C takes up to 40 ms, so use sparingly is possible.
 	 */
-	void read();
+	bool read();
+	bool read_original();
 
 	read_state readAsync();
 
@@ -100,7 +105,7 @@ private:
 	//This stores the requested i2c port
 	TwoWire * _i2cPort;
 
-	uint16_t C[8];
+	uint16_t C[8]={0,0,0,0,0,0,0,0};
 	uint32_t D1_pres, D2_temp;
 	int32_t TEMP;
 	int32_t P;

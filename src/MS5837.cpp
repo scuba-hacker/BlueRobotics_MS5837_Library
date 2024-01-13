@@ -22,7 +22,14 @@ const uint8_t MS5837_30BA26 = 0x1A; // Sensor version: From MS5837_30BA datashee
 
 
 MS5837::MS5837() {
-	fluidDensity = 1029;
+	setFluidDensityFreshWater();
+	D2_temp = 0;
+	D1_pres = 0;
+	P = 0;
+	TEMP = 0;
+	
+	_model = MS5837_30BA;
+
 	next_state_event_time = 0;
 	read_sensor_state = READ_INIT;
 }
@@ -59,6 +66,8 @@ bool MS5837::init(TwoWire &wirePort)
 		return false; // CRC fail
 	}
 	uint8_t version = (C[0] >> 5) & 0x7F; // Extract the sensor version from PROM Word 0
+	/*
+	// This is buggy for 300 bar sensor
 	// Set _model according to the sensor version
 	if (version == MS5837_02BA01)
 	{
@@ -76,6 +85,7 @@ bool MS5837::init(TwoWire &wirePort)
 	{
 		_model = MS5837_UNRECOGNISED;
 	}
+	*/
 	// The sensor has passed the CRC check, so we should return true even if
 	// the sensor version is unrecognised.
 	// (The MS5637 has the same address as the MS5837 and will also pass the CRC check)
@@ -94,6 +104,16 @@ uint8_t MS5837::getModel() {
 
 void MS5837::setFluidDensity(float density) {
 	fluidDensity = density;
+}
+
+void MS5837::setFluidDensityFreshWater()
+{
+	fluidDensity = 997;
+}
+
+void MS5837::setFluidDensitySaltWater()
+{
+	fluidDensity = 1029;
 }
 
 MS5837::read_state MS5837::readAsync()
@@ -125,17 +145,63 @@ MS5837::read_state MS5837::readAsync()
 	return read_sensor_state;
 }
 
-void MS5837::read()
+bool MS5837::read_original() {
+	//Check that _i2cPort is not NULL (i.e. has the user forgoten to call .init or .begin?)
+	if (_i2cPort == NULL)
+		return false;
+
+	// Request D1 conversion
+	_i2cPort->beginTransmission(MS5837_ADDR);
+	_i2cPort->write(MS5837_CONVERT_D1_8192);
+	_i2cPort->endTransmission();
+
+	delay(20); // Max conversion time per datasheet
+
+	_i2cPort->beginTransmission(MS5837_ADDR);
+	_i2cPort->write(MS5837_ADC_READ);
+	_i2cPort->endTransmission();
+
+	_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
+	D1_pres = 0;
+	D1_pres = _i2cPort->read();
+	D1_pres = (D1_pres << 8) | _i2cPort->read();
+	D1_pres = (D1_pres << 8) | _i2cPort->read();
+
+	// Request D2 conversion
+	_i2cPort->beginTransmission(MS5837_ADDR);
+	_i2cPort->write(MS5837_CONVERT_D2_8192);
+	_i2cPort->endTransmission();
+
+	delay(20); // Max conversion time per datasheet
+
+	_i2cPort->beginTransmission(MS5837_ADDR);
+	_i2cPort->write(MS5837_ADC_READ);
+	_i2cPort->endTransmission();
+
+	_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
+	D2_temp = 0;
+	D2_temp = _i2cPort->read();
+	D2_temp = (D2_temp << 8) | _i2cPort->read();
+	D2_temp = (D2_temp << 8) | _i2cPort->read();
+
+	calculate();
+
+	return true;
+}
+
+bool MS5837::read()
 {
 	//Check that _i2cPort is not NULL (i.e. has the user forgoten to call .init or .begin?)
 	if (_i2cPort == NULL)
-		return;
+		return false;
 
 	requestD1Conversion();
-	delay(MS5837_CONVERSION_PERIOD);
+	delay(MS5837_CONVERSION_PERIOD+2);
 	retrieveD1ConversionAndRequestD2Conversion();
-	delay(MS5837_CONVERSION_PERIOD);
+	delay(MS5837_CONVERSION_PERIOD+2);
 	retrieveD2ConversionAndCalculate();
+
+	return true;
 }
 
 void MS5837::requestD1Conversion()
@@ -194,45 +260,6 @@ void MS5837::retrieveD2ConversionAndCalculate()
 	}
 }
 
-/*
-void MS5837::read() {
-	// Request D1 conversion
-	_i2cPort->beginTransmission(MS5837_ADDR);
-	_i2cPort->write(MS5837_CONVERT_D1_8192);
-	_i2cPort->endTransmission();
-
-	delay(20); // Max conversion time per datasheet
-
-	_i2cPort->beginTransmission(MS5837_ADDR);
-	_i2cPort->write(MS5837_ADC_READ);
-	_i2cPort->endTransmission();
-
-	_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
-	D1_pres = 0;
-	D1_pres = _i2cPort->read();
-	D1_pres = (D1_pres << 8) | _i2cPort->read();
-	D1_pres = (D1_pres << 8) | _i2cPort->read();
-
-	// Request D2 conversion
-	_i2cPort->beginTransmission(MS5837_ADDR);
-	_i2cPort->write(MS5837_CONVERT_D2_8192);
-	_i2cPort->endTransmission();
-
-	delay(20); // Max conversion time per datasheet
-
-	_i2cPort->beginTransmission(MS5837_ADDR);
-	_i2cPort->write(MS5837_ADC_READ);
-	_i2cPort->endTransmission();
-
-	_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3);
-	D2_temp = 0;
-	D2_temp = _i2cPort->read();
-	D2_temp = (D2_temp << 8) | _i2cPort->read();
-	D2_temp = (D2_temp << 8) | _i2cPort->read();
-
-	calculate();
-}
-*/
 
 void MS5837::calculate() {
 	// Given C1-C6 and D1_pres, D2_temp, calculated TEMP and P
