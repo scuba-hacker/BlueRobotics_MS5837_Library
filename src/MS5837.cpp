@@ -7,7 +7,11 @@ const uint8_t MS5837_PROM_READ = 0xA0;
 const uint8_t MS5837_CONVERT_D1_8192 = 0x4A;
 const uint8_t MS5837_CONVERT_D2_8192 = 0x5A;
 
-#define MS5837_CONVERSION_PERIOD  20		// delay needed for conversion according to data sheet
+#ifdef ENABLE_TEST_STUBS
+	#define MS5837_CONVERSION_PERIOD  200		// delay needed for conversion according to data sheet
+#else
+	#define MS5837_CONVERSION_PERIOD  20		// delay needed for conversion according to data sheet
+#endif
 
 const float MS5837::Pa = 100.0f;
 const float MS5837::bar = 0.001f;
@@ -34,11 +38,23 @@ MS5837::MS5837() {
 	read_sensor_state = READ_INIT;
 }
 
+
+#ifdef ENABLE_TEST_STUBS
+bool MS5837::begin(TwoWireX &wirePort) {
+	return (init(wirePort));
+}
+#else
+
 bool MS5837::begin(TwoWire &wirePort) {
 	return (init(wirePort));
 }
+#endif
 
+#ifdef ENABLE_TEST_STUBS
+bool MS5837::init(TwoWireX &wirePort)
+#else
 bool MS5837::init(TwoWire &wirePort)
+#endif
 {
 	_i2cPort = &wirePort; //Grab which port the user wants us to use
 	// Reset the MS5837, per datasheet
@@ -63,7 +79,9 @@ bool MS5837::init(TwoWire &wirePort)
 	uint8_t crcCalculated = crc4(C);
 
 	if ( crcCalculated != crcRead ) {
-		return false; // CRC fail
+		#ifndef ENABLE_TEST_STUBS
+			return false; // CRC fail
+		#endif
 	}
 	uint8_t version = (C[0] >> 5) & 0x7F; // Extract the sensor version from PROM Word 0
 	/*
@@ -118,6 +136,7 @@ void MS5837::setFluidDensitySaltWater()
 
 MS5837::read_state MS5837::readAsync()
 {
+	Serial.printf("%lu   %s\n",millis(),read_state_labels[read_sensor_state]);
 	switch(read_sensor_state)
 	{
 		case READ_INIT:

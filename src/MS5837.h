@@ -38,7 +38,16 @@ THE SOFTWARE.
 #define MS5837_H_BLUEROBOTICS
 
 #include "Arduino.h"
-#include <Wire.h>
+
+#define ENABLE_TEST_STUBS
+
+#ifdef ENABLE_TEST_STUBS
+	#include "WireTestStub.h"
+#else
+	#include <Wire.h>
+#endif
+
+static const char* read_state_labels[] = {"READ_INIT","PENDING_D1_CONVERSION","PENDING_D2_CONVERSION","READ_COMPLETE"};
 
 class MS5837 {
 public:
@@ -54,9 +63,13 @@ public:
 
 	MS5837();
 
-
+#ifdef ENABLE_TEST_STUBS
+	bool init(TwoWireX &wirePort = WireX);
+	bool begin(TwoWireX &wirePort = WireX); // Calls init()
+#else
 	bool init(TwoWire &wirePort = Wire);
 	bool begin(TwoWire &wirePort = Wire); // Calls init()
+#endif
 
 	/** Set model of MS5837 sensor. Valid options are MS5837::MS5837_30BA (default)
 	 * and MS5837::MS5837_02BA.
@@ -97,13 +110,32 @@ public:
 	 */
 	float altitude();
 
+	uint32_t getNextStateEventTime() const
+	{
+		return next_state_event_time;
+	}
+
+	read_state getReadSensorState() const
+	{
+		return read_sensor_state;
+	}
+
+	const char* getReadSensorStateLabel() const
+	{
+		return read_state_labels[read_sensor_state];
+	}
+
 private:
 
 	uint32_t next_state_event_time;
 	read_state read_sensor_state;
 
 	//This stores the requested i2c port
+#ifdef ENABLE_TEST_STUBS
+	TwoWireX * _i2cPort;
+#else
 	TwoWire * _i2cPort;
+#endif
 
 	uint16_t C[8]={0,0,0,0,0,0,0,0};
 	uint32_t D1_pres, D2_temp;
@@ -124,5 +156,6 @@ private:
 
 	uint8_t crc4(uint16_t n_prom[]);
 };
+
 
 #endif
