@@ -1,3 +1,6 @@
+#define NO_BUILD_OF_MAIN_TO_PERMIT_LIB_USAGE_IN_MAKO
+
+#ifndef NO_BUILD_OF_MAIN_TO_PERMIT_LIB_USAGE_IN_MAKO
 #include <Arduino.h>
 #include <M5StickCPlus.h>
 
@@ -34,3 +37,5 @@ void loop()
         delay (50);
     }
 } 
+
+#endif

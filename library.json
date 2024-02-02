@@ -1,9 +1,0 @@
-{
-  "export":
-  {
-    "exclude":
-    [
-        "main.cpp"
-    ]
-  }   
-}
