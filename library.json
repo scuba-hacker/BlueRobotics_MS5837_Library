@@ -3,7 +3,7 @@
   {
     "exclude":
     [
-        "**/main.cpp"
+        "main.cpp"
     ]
   }   
 }
