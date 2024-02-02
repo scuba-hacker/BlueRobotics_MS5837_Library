@@ -39,8 +39,6 @@ THE SOFTWARE.
 
 #include "Arduino.h"
 
-#define ENABLE_TEST_STUBS
-
 #ifdef ENABLE_TEST_STUBS
 	#include "WireTestStub.h"
 #else
