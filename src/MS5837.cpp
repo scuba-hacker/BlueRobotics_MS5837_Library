@@ -33,9 +33,6 @@ MS5837::MS5837() {
 	TEMP = 0;
 	
 	_model = MS5837_30BA;
-
-	next_state_event_time = 0;
-	read_sensor_state = READ_INIT;
 }
 
 
@@ -56,6 +53,10 @@ bool MS5837::init(TwoWireX &wirePort)
 bool MS5837::init(TwoWire &wirePort)
 #endif
 {
+	// Reset the state machine - allows application to reset the sensor after the first initialisation if needed by calling init again
+	next_state_event_time = 0;
+	read_sensor_state = READ_INIT;
+
 	_i2cPort = &wirePort; //Grab which port the user wants us to use
 	// Reset the MS5837, per datasheet
 	_i2cPort->beginTransmission(MS5837_ADDR);
