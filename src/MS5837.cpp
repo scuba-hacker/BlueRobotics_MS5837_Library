@@ -4,8 +4,22 @@ const uint8_t MS5837_ADDR = 0x76;
 const uint8_t MS5837_RESET = 0x1E;
 const uint8_t MS5837_ADC_READ = 0x00;
 const uint8_t MS5837_PROM_READ = 0xA0;
+
+// OSR conversion commands (kept for backward compatibility)
 const uint8_t MS5837_CONVERT_D1_8192 = 0x4A;
 const uint8_t MS5837_CONVERT_D2_8192 = 0x5A;
+
+// All OSR conversion commands
+const uint8_t MS5837_CONVERT_D1_256  = 0x40;
+const uint8_t MS5837_CONVERT_D2_256  = 0x50;
+const uint8_t MS5837_CONVERT_D1_512  = 0x42;
+const uint8_t MS5837_CONVERT_D2_512  = 0x52;
+const uint8_t MS5837_CONVERT_D1_1024 = 0x44;
+const uint8_t MS5837_CONVERT_D2_1024 = 0x54;
+const uint8_t MS5837_CONVERT_D1_2048 = 0x46;
+const uint8_t MS5837_CONVERT_D2_2048 = 0x56;
+const uint8_t MS5837_CONVERT_D1_4096 = 0x48;
+const uint8_t MS5837_CONVERT_D2_4096 = 0x58;
 
 #ifdef ENABLE_TEST_STUBS
 	#define MS5837_CONVERSION_PERIOD  200		// delay needed for conversion according to data sheet
@@ -20,6 +34,14 @@ const float MS5837::mbar = 1.0f;
 const uint8_t MS5837::MS5837_30BA = 0;
 const uint8_t MS5837::MS5837_02BA = 1;
 const uint8_t MS5837::MS5837_UNRECOGNISED = 255;
+
+// OSR constants
+const uint8_t MS5837::OSR_256  = 0;
+const uint8_t MS5837::OSR_512  = 1;
+const uint8_t MS5837::OSR_1024 = 2;
+const uint8_t MS5837::OSR_2048 = 3;
+const uint8_t MS5837::OSR_4096 = 4;
+const uint8_t MS5837::OSR_8192 = 5;
 const uint8_t MS5837_02BA01 = 0x00; // Sensor version: From MS5837_02BA datasheet Version PROM Word 0
 const uint8_t MS5837_02BA21 = 0x15; // Sensor version: From MS5837_02BA datasheet Version PROM Word 0
 const uint8_t MS5837_30BA26 = 0x1A; // Sensor version: From MS5837_30BA datasheet Version PROM Word 0
@@ -33,8 +55,11 @@ MS5837::MS5837() {
 	P = 0;
 	TEMP = 0;
 	_atmosphericPressure = defaultAtmosphericPressure;
-	
+
 	_model = MS5837_30BA;
+
+	// Default to OSR 8192 for backward compatibility
+	setOSR(OSR_8192);
 }
 
 
@@ -137,6 +162,46 @@ void MS5837::setFluidDensitySaltWater()
 	_fluidDensity = 1029;
 }
 
+void MS5837::setOSR(uint8_t osr)
+{
+	_osr = osr;
+
+	// Set conversion commands and delays based on OSR (datasheet max + 100μs margin)
+	switch (osr) {
+		case OSR_256:
+			_convertD1Cmd = MS5837_CONVERT_D1_256;
+			_convertD2Cmd = MS5837_CONVERT_D2_256;
+			_conversionDelayUs = 700;  // 600μs per datasheet + 100μs margin
+			break;
+		case OSR_512:
+			_convertD1Cmd = MS5837_CONVERT_D1_512;
+			_convertD2Cmd = MS5837_CONVERT_D2_512;
+			_conversionDelayUs = 1270;  // 1170μs per datasheet + 100μs margin
+			break;
+		case OSR_1024:
+			_convertD1Cmd = MS5837_CONVERT_D1_1024;
+			_convertD2Cmd = MS5837_CONVERT_D2_1024;
+			_conversionDelayUs = 2380;  // 2280μs per datasheet + 100μs margin
+			break;
+		case OSR_2048:
+			_convertD1Cmd = MS5837_CONVERT_D1_2048;
+			_convertD2Cmd = MS5837_CONVERT_D2_2048;
+			_conversionDelayUs = 4640;  // 4540μs per datasheet + 100μs margin
+			break;
+		case OSR_4096:
+			_convertD1Cmd = MS5837_CONVERT_D1_4096;
+			_convertD2Cmd = MS5837_CONVERT_D2_4096;
+			_conversionDelayUs = 9140;  // 9040μs per datasheet + 100μs margin
+			break;
+		case OSR_8192:
+		default:
+			_convertD1Cmd = MS5837_CONVERT_D1_8192;
+			_convertD2Cmd = MS5837_CONVERT_D2_8192;
+			_conversionDelayUs = 17300;  // 17200μs per datasheet + 100μs margin
+			break;
+	}
+}
+
 bool MS5837::calibrateAtSurfaceForAtmosphericPressure()
 {
 	/*
@@ -206,10 +271,10 @@ bool MS5837::read_original() {
 
 	// Request D1 conversion
 	_i2cPort->beginTransmission(MS5837_ADDR);
-	_i2cPort->write(MS5837_CONVERT_D1_8192);
+	_i2cPort->write(_convertD1Cmd);
 	_i2cPort->endTransmission();
 
-	delay(20); // Max conversion time per datasheet
+	delayMicroseconds(_conversionDelayUs); // Max conversion time per datasheet
 
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_ADC_READ);
@@ -223,10 +288,10 @@ bool MS5837::read_original() {
 
 	// Request D2 conversion
 	_i2cPort->beginTransmission(MS5837_ADDR);
-	_i2cPort->write(MS5837_CONVERT_D2_8192);
+	_i2cPort->write(_convertD2Cmd);
 	_i2cPort->endTransmission();
 
-	delay(20); // Max conversion time per datasheet
+	delayMicroseconds(_conversionDelayUs); // Max conversion time per datasheet
 
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_ADC_READ);
@@ -249,10 +314,14 @@ bool MS5837::read()
 	if (_i2cPort == NULL)
 		return false;
 
+	// Reset state machine to allow immediate execution
+	read_sensor_state = READ_INIT;
+	next_state_event_time = 0;
+
 	requestD1Conversion();
-	delay(MS5837_CONVERSION_PERIOD+2);
+	delayMicroseconds(_conversionDelayUs + 500);  // Extra 500μs for I2C overhead
 	retrieveD1ConversionAndRequestD2Conversion();
-	delay(MS5837_CONVERSION_PERIOD+2);
+	delayMicroseconds(_conversionDelayUs + 500);  // Extra 500μs for I2C overhead
 	retrieveD2ConversionAndCalculate();
 
 	return true;
@@ -260,19 +329,19 @@ bool MS5837::read()
 
 void MS5837::requestD1Conversion()
 {
-	if ((read_sensor_state == READ_COMPLETE || read_sensor_state == READ_INIT) && millis() >= next_state_event_time)
+	if ((read_sensor_state == READ_COMPLETE || read_sensor_state == READ_INIT) && micros() >= next_state_event_time)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
-		_i2cPort->write(MS5837_CONVERT_D1_8192);
+		_i2cPort->write(_convertD1Cmd);
 		_i2cPort->endTransmission();
 		read_sensor_state = PENDING_D1_CONVERSION;
-		next_state_event_time = millis() + MS5837_CONVERSION_PERIOD;
+		next_state_event_time = micros() + _conversionDelayUs;
 	}
 }
 
 void MS5837::retrieveD1ConversionAndRequestD2Conversion()
 {
-	if (read_sensor_state == PENDING_D1_CONVERSION && millis() >= next_state_event_time)
+	if (read_sensor_state == PENDING_D1_CONVERSION && micros() >= next_state_event_time)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_ADC_READ);
@@ -285,17 +354,17 @@ void MS5837::retrieveD1ConversionAndRequestD2Conversion()
 		D1_pres = (D1_pres << 8) | _i2cPort->read();
 
 		_i2cPort->beginTransmission(MS5837_ADDR);
-		_i2cPort->write(MS5837_CONVERT_D2_8192);
+		_i2cPort->write(_convertD2Cmd);
 		_i2cPort->endTransmission();
 
 		read_sensor_state = PENDING_D2_CONVERSION;
-		next_state_event_time = millis() + MS5837_CONVERSION_PERIOD;
+		next_state_event_time = micros() + _conversionDelayUs;
 	}
 }
 
 void MS5837::retrieveD2ConversionAndCalculate()
 {
-	if (read_sensor_state == PENDING_D2_CONVERSION && millis() >= next_state_event_time)
+	if (read_sensor_state == PENDING_D2_CONVERSION && micros() >= next_state_event_time)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_ADC_READ);
@@ -310,7 +379,7 @@ void MS5837::retrieveD2ConversionAndCalculate()
 		calculate();
 
 		read_sensor_state = READ_COMPLETE;
-		next_state_event_time = millis();
+		next_state_event_time = micros();
 	}
 }
 

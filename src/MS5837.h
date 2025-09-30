@@ -59,6 +59,15 @@ public:
 	static const uint8_t MS5837_02BA;
 	static const uint8_t MS5837_UNRECOGNISED;
 
+	// OSR (Over-Sampling Ratio) constants
+	// Resolution specs are RMS noise from datasheet (depth in saltwater, temp all OSR)
+	static const uint8_t OSR_256;   // Depth: ±2.5cm, Temp: ±0.01°C
+	static const uint8_t OSR_512;   // Depth: ±1.7cm, Temp: ±0.01°C
+	static const uint8_t OSR_1024;  // Depth: ±1.1cm, Temp: ±0.01°C
+	static const uint8_t OSR_2048;  // Depth: ±0.7cm, Temp: ±0.01°C
+	static const uint8_t OSR_4096;  // Depth: ±0.5cm, Temp: ±0.01°C
+	static const uint8_t OSR_8192;  // Depth: ±0.4cm, Temp: ±0.01°C
+
 	MS5837();
 
 #ifdef ENABLE_TEST_STUBS
@@ -83,6 +92,11 @@ public:
 	void setFluidDensityFreshWater();
 
 	void setFluidDensitySaltWater();
+
+	/** Set Over-Sampling Ratio. Valid options are OSR_256 (fastest, 0.6ms),
+	 * OSR_512, OSR_1024, OSR_2048, OSR_4096, OSR_8192 (slowest, most precise, 17.2ms, default).
+	 */
+	void setOSR(uint8_t osr);
 
 	bool calibrateAtSurfaceForAtmosphericPressure();
 
@@ -145,6 +159,12 @@ private:
 	float _atmosphericPressure;
 
 	float _fluidDensity;
+
+	// OSR configuration
+	uint8_t _osr;
+	uint8_t _convertD1Cmd;
+	uint8_t _convertD2Cmd;
+	uint16_t _conversionDelayUs;
 
 	void requestD1Conversion();
 	void retrieveD1ConversionAndRequestD2Conversion();
