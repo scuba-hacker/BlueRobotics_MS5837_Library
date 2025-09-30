@@ -84,6 +84,8 @@ public:
 
 	void setFluidDensitySaltWater();
 
+	bool calibrateAtSurfaceForAtmosphericPressure();
+
 	/** The read from I2C takes up to 40 ms, so use sparingly is possible.
 	 */
 	bool read();
@@ -140,8 +142,9 @@ private:
 	int32_t TEMP;
 	int32_t P;
 	uint8_t _model;
+	float _atmosphericPressure;
 
-	float fluidDensity;
+	float _fluidDensity;
 
 	void requestD1Conversion();
 	void retrieveD1ConversionAndRequestD2Conversion();

@@ -24,6 +24,7 @@ const uint8_t MS5837_02BA01 = 0x00; // Sensor version: From MS5837_02BA datashee
 const uint8_t MS5837_02BA21 = 0x15; // Sensor version: From MS5837_02BA datasheet Version PROM Word 0
 const uint8_t MS5837_30BA26 = 0x1A; // Sensor version: From MS5837_30BA datasheet Version PROM Word 0
 
+const float defaultAtmosphericPressure = 101300;	// 1013 mbar
 
 MS5837::MS5837() {
 	setFluidDensityFreshWater();
@@ -31,6 +32,7 @@ MS5837::MS5837() {
 	D1_pres = 0;
 	P = 0;
 	TEMP = 0;
+	_atmosphericPressure = defaultAtmosphericPressure;
 	
 	_model = MS5837_30BA;
 }
@@ -122,17 +124,49 @@ uint8_t MS5837::getModel() {
 }
 
 void MS5837::setFluidDensity(float density) {
-	fluidDensity = density;
+	_fluidDensity = density;
 }
 
 void MS5837::setFluidDensityFreshWater()
 {
-	fluidDensity = 997;
+	_fluidDensity = 997;
 }
 
 void MS5837::setFluidDensitySaltWater()
 {
-	fluidDensity = 1029;
+	_fluidDensity = 1029;
+}
+
+bool MS5837::calibrateAtSurfaceForAtmosphericPressure()
+{
+	/*
+	0.5 metres value below - don't go lower eg 0.1m as per this explanation:
+	
+	On high atmospheric pressure days (e.g., 1040-1050 mbar), the sensor at the surface will calculate:
+    - depth = (105000 - 101300) / (1029 * 9.81) ≈ 0.37m
+    - This exceeds a 0.1m threshold, so calibration fails even though you're at the surface
+    - You'll be stuck with the default 101300 Pa value
+	*/
+
+	const float notAtSurfaceFailsafe = 0.5;
+	read_original();
+
+	if (depth() > notAtSurfaceFailsafe)
+		return false;		// calibration must be done at the surface
+		
+	float reading = 0.0;
+	const int readingsCount = 10;
+	for (int i=0; i < readingsCount; i++)
+	{
+		read_original();
+		reading += pressure();		// pressure is returned in millibars
+		delay(50);
+	}
+
+	// must scale up to 100 x millibars
+	_atmosphericPressure = reading / (float)readingsCount * 100.0;
+
+	return true;
 }
 
 MS5837::read_state MS5837::readAsync()
@@ -361,13 +395,12 @@ float MS5837::temperature() {
 }
 
 float MS5837::depth() {
-	return (pressure(MS5837::Pa)-101300)/(fluidDensity*9.80665);
+	return (pressure(MS5837::Pa)-_atmosphericPressure)/(_fluidDensity*9.80665);
 }
 
 float MS5837::altitude() {
 	return (1-pow((pressure()/1013.25),.190284))*145366.45*.3048;
 }
-
 
 uint8_t MS5837::crc4(uint16_t n_prom[]) {
 	uint16_t n_rem = 0;
