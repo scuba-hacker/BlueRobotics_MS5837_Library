@@ -171,33 +171,33 @@ void MS5837::setOSR(uint8_t osr)
 		case OSR_256:
 			_convertD1Cmd = MS5837_CONVERT_D1_256;
 			_convertD2Cmd = MS5837_CONVERT_D2_256;
-			_conversionDelayUs = 700;  // 600μs per datasheet + 100μs margin
+			_conversionDelayUs = 700UL;  // 600μs per datasheet + 100μs margin
 			break;
 		case OSR_512:
 			_convertD1Cmd = MS5837_CONVERT_D1_512;
 			_convertD2Cmd = MS5837_CONVERT_D2_512;
-			_conversionDelayUs = 1270;  // 1170μs per datasheet + 100μs margin
+			_conversionDelayUs = 1270UL;  // 1170μs per datasheet + 100μs margin
 			break;
 		case OSR_1024:
 			_convertD1Cmd = MS5837_CONVERT_D1_1024;
 			_convertD2Cmd = MS5837_CONVERT_D2_1024;
-			_conversionDelayUs = 2380;  // 2280μs per datasheet + 100μs margin
+			_conversionDelayUs = 2380UL;  // 2280μs per datasheet + 100μs margin
 			break;
 		case OSR_2048:
 			_convertD1Cmd = MS5837_CONVERT_D1_2048;
 			_convertD2Cmd = MS5837_CONVERT_D2_2048;
-			_conversionDelayUs = 4640;  // 4540μs per datasheet + 100μs margin
+			_conversionDelayUs = 4640UL;  // 4540μs per datasheet + 100μs margin
 			break;
 		case OSR_4096:
 			_convertD1Cmd = MS5837_CONVERT_D1_4096;
 			_convertD2Cmd = MS5837_CONVERT_D2_4096;
-			_conversionDelayUs = 9140;  // 9040μs per datasheet + 100μs margin
+			_conversionDelayUs = 9140UL;  // 9040μs per datasheet + 100μs margin
 			break;
 		case OSR_8192:
 		default:
 			_convertD1Cmd = MS5837_CONVERT_D1_8192;
 			_convertD2Cmd = MS5837_CONVERT_D2_8192;
-			_conversionDelayUs = 17300;  // 17200μs per datasheet + 100μs margin
+			_conversionDelayUs = 17300UL;  // 17200μs per datasheet + 100μs margin
 			break;
 	}
 }
@@ -319,9 +319,9 @@ bool MS5837::read()
 	next_state_event_time = 0;
 
 	requestD1Conversion();
-	delayMicroseconds(_conversionDelayUs + 500);  // Extra 500μs for I2C overhead
+	delayMicroseconds(_conversionDelayUs + 500UL);  // Extra 500μs for I2C overhead
 	retrieveD1ConversionAndRequestD2Conversion();
-	delayMicroseconds(_conversionDelayUs + 500);  // Extra 500μs for I2C overhead
+	delayMicroseconds(_conversionDelayUs + 500UL);  // Extra 500μs for I2C overhead
 	retrieveD2ConversionAndCalculate();
 
 	return true;
@@ -329,7 +329,8 @@ bool MS5837::read()
 
 void MS5837::requestD1Conversion()
 {
-	if ((read_sensor_state == READ_COMPLETE || read_sensor_state == READ_INIT) && micros() >= next_state_event_time)
+	if ((read_sensor_state == READ_COMPLETE || read_sensor_state == READ_INIT) && 
+		(int32_t)(micros() - next_state_event_time) >= 0)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(_convertD1Cmd);
@@ -341,7 +342,8 @@ void MS5837::requestD1Conversion()
 
 void MS5837::retrieveD1ConversionAndRequestD2Conversion()
 {
-	if (read_sensor_state == PENDING_D1_CONVERSION && micros() >= next_state_event_time)
+	if (read_sensor_state == PENDING_D1_CONVERSION && 
+		(int32_t)(micros() - next_state_event_time) >= 0)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_ADC_READ);
@@ -364,7 +366,8 @@ void MS5837::retrieveD1ConversionAndRequestD2Conversion()
 
 void MS5837::retrieveD2ConversionAndCalculate()
 {
-	if (read_sensor_state == PENDING_D2_CONVERSION && micros() >= next_state_event_time)
+	if (read_sensor_state == PENDING_D2_CONVERSION && 
+		(int32_t)(micros() - next_state_event_time) >= 0)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_ADC_READ);

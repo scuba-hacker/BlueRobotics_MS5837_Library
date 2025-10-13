@@ -164,7 +164,7 @@ private:
 	uint8_t _osr;
 	uint8_t _convertD1Cmd;
 	uint8_t _convertD2Cmd;
-	uint16_t _conversionDelayUs;
+	uint32_t _conversionDelayUs;
 
 	void requestD1Conversion();
 	void retrieveD1ConversionAndRequestD2Conversion();
