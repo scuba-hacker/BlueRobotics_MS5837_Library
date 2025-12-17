@@ -107,6 +107,8 @@ public:
 
 	read_state readAsync();
 
+	bool revertToInitialStateOnError();
+
 	/** Pressure returned in mbar or mbar*conversion rate.
 	 */
 	float pressure(float conversion = 1.0f);
@@ -166,9 +168,9 @@ private:
 	uint8_t _convertD2Cmd;
 	uint32_t _conversionDelayUs;
 
-	void requestD1Conversion();
-	void retrieveD1ConversionAndRequestD2Conversion();
-	void retrieveD2ConversionAndCalculate();
+	bool requestD1Conversion();
+	bool retrieveD1ConversionAndRequestD2Conversion();
+	bool retrieveD2ConversionAndCalculate();
 
 	/** Performs calculations per the sensor data sheet for conversion and
 	 *  second order compensation.
