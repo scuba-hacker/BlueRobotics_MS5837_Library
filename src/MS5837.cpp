@@ -56,6 +56,7 @@ MS5837::MS5837() {
 	D1_pres = 0;
 	P = 0;
 	TEMP = 0;
+	i2c_errors = 0;
 	_atmosphericPressure = defaultAtmosphericPressure;
 
 	_model = MS5837_30BA;
@@ -91,7 +92,7 @@ bool MS5837::init(TwoWire &wirePort)
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_RESET);
 	if (_i2cPort->endTransmission() != 0)
-		return false;
+		return logI2CError();
 
 	// Wait for reset to complete
 	delay(10);
@@ -101,10 +102,10 @@ bool MS5837::init(TwoWire &wirePort)
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_PROM_READ+i*2);
 		if (_i2cPort->endTransmission() != 0)
-			return false;
+			return logI2CError();
 
 		if (_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)2) != 2)
-			return false;
+			return logI2CError();
 
 		C[i] = (_i2cPort->read() << 8) | _i2cPort->read();
 	}
@@ -241,13 +242,19 @@ bool MS5837::calibrateAtSurfaceForAtmosphericPressure()
 	return true;
 }
 
-bool MS5837::revertToInitialStateOnError()
+bool MS5837::logI2CErrorAndRevertToInitialState()
 {
+	i2c_errors++;
 	read_sensor_state = READ_INIT;
 	next_state_event_time = micros() + resetAfterErrorDelayUS;	// Retry after 10ms
 	return false;
 }
 
+bool MS5837::logI2CError()
+{
+	i2c_errors++;
+	return false;
+}
 
 MS5837::read_state MS5837::readAsync()
 {
@@ -282,23 +289,23 @@ MS5837::read_state MS5837::readAsync()
 bool MS5837::read_original() {
 	//Check that _i2cPort is not NULL (i.e. has the user forgoten to call .init or .begin?)
 	if (_i2cPort == NULL)
-		return false;
+		return logI2CError();
 
 	// Request D1 conversion
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(_convertD1Cmd);
 	if (_i2cPort->endTransmission() != 0)
-		return false;
+		return logI2CError();
 
 	delayMicroseconds(_conversionDelayUs); // Max conversion time per datasheet
 
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_ADC_READ);
 	if (_i2cPort->endTransmission() != 0)
-		return false;
+		return logI2CError();
 
 	if (_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3) != 3)
-		return false;
+		return logI2CError();
 
 	D1_pres = 0;
 	D1_pres = _i2cPort->read();
@@ -309,17 +316,17 @@ bool MS5837::read_original() {
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(_convertD2Cmd);
 	if (_i2cPort->endTransmission() != 0)
-		return false;
+		return logI2CError();
 
 	delayMicroseconds(_conversionDelayUs); // Max conversion time per datasheet
 
 	_i2cPort->beginTransmission(MS5837_ADDR);
 	_i2cPort->write(MS5837_ADC_READ);
 	if (_i2cPort->endTransmission() != 0)
-		return false;
+		return logI2CError();
 
 	if (_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3) != 3)
-		return false;
+		return logI2CError();
 
 	D2_temp = 0;
 	D2_temp = _i2cPort->read();
@@ -335,24 +342,24 @@ bool MS5837::read()
 {
 	//Check that _i2cPort is not NULL (i.e. has the user forgoten to call .init or .begin?)
 	if (_i2cPort == NULL)
-		return false;
+		return logI2CError();
 
 	// Reset state machine to allow immediate execution
 	read_sensor_state = READ_INIT;
 	next_state_event_time = 0;
 
 	if (!requestD1Conversion()) 
-		return false;
+		return logI2CError();
 	
 	delayMicroseconds(_conversionDelayUs + 500UL);  // Extra 500μs for I2C overhead
 	
 	if (!retrieveD1ConversionAndRequestD2Conversion())
-		return false;
+		return logI2CError();
 	
 	delayMicroseconds(_conversionDelayUs + 500UL);  // Extra 500μs for I2C overhead
 
 	if (!retrieveD2ConversionAndCalculate())
-		return false;
+		return logI2CError();
 
 	return true;
 }
@@ -365,7 +372,7 @@ bool MS5837::requestD1Conversion()
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(_convertD1Cmd);
 		if (_i2cPort->endTransmission() != 0)
-			return revertToInitialStateOnError();
+			return logI2CErrorAndRevertToInitialState();
 
 		read_sensor_state = PENDING_D1_CONVERSION;
 		next_state_event_time = micros() + _conversionDelayUs;
@@ -381,10 +388,10 @@ bool MS5837::retrieveD1ConversionAndRequestD2Conversion()
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_ADC_READ);
 		if (_i2cPort->endTransmission() != 0)
-			return revertToInitialStateOnError();
+			return logI2CErrorAndRevertToInitialState();
 
 		if (_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3) != 3)
-			return revertToInitialStateOnError();
+			return logI2CErrorAndRevertToInitialState();
 
 		D1_pres = 0;
 		D1_pres = _i2cPort->read();
@@ -394,7 +401,7 @@ bool MS5837::retrieveD1ConversionAndRequestD2Conversion()
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(_convertD2Cmd);
 		if (_i2cPort->endTransmission() != 0)
-			return revertToInitialStateOnError();
+			return logI2CErrorAndRevertToInitialState();
 
 		read_sensor_state = PENDING_D2_CONVERSION;
 		next_state_event_time = micros() + _conversionDelayUs;
@@ -410,10 +417,10 @@ bool MS5837::retrieveD2ConversionAndCalculate()
 		_i2cPort->beginTransmission(MS5837_ADDR);
 		_i2cPort->write(MS5837_ADC_READ);
 		if (_i2cPort->endTransmission() != 0)
-			return revertToInitialStateOnError();
+			return logI2CErrorAndRevertToInitialState();
 
 		if (_i2cPort->requestFrom(MS5837_ADDR,(uint8_t)3) != 3)
-			return revertToInitialStateOnError();
+			return logI2CErrorAndRevertToInitialState();
 
 		D2_temp = 0;
 		D2_temp = _i2cPort->read();
