@@ -109,11 +109,11 @@ public:
 
 	bool logI2CErrorAndRevertToInitialState();
 	bool logI2CError();
-	bool getI2CErrorCount() const
+	uint8_t getI2CErrorCount() const
 	{
 		return i2c_errors;
 	}
-	
+
 	/** Pressure returned in mbar or mbar*conversion rate.
 	 */
 	float pressure(float conversion = 1.0f);
@@ -150,7 +150,7 @@ private:
 
 	uint32_t next_state_event_time;
 	read_state read_sensor_state;
-	int i2c_errors;
+	uint8_t i2c_errors;
 
 	//This stores the requested i2c port
 #ifdef ENABLE_TEST_STUBS

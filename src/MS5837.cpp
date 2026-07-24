@@ -48,7 +48,7 @@ const uint8_t MS5837_30BA26 = 0x1A; // Sensor version: From MS5837_30BA datashee
 
 const float defaultAtmosphericPressure = 101300;	// 1013 mbar
 
-const int resetAfterErrorDelayUS = 10000; // on I2C failure reset to INIT state after delay uS
+const uint32_t resetAfterErrorDelayUS = 10000; // on I2C failure reset to INIT state after delay uS
 
 MS5837::MS5837() {
 	setFluidDensityFreshWater();
@@ -386,6 +386,7 @@ bool MS5837::retrieveD1ConversionAndRequestD2Conversion()
 		(int32_t)(micros() - next_state_event_time) >= 0)
 	{
 		_i2cPort->beginTransmission(MS5837_ADDR);
+		delayMicroseconds(1); // recommended by Chatgpt to avoid I2C timing issues
 		_i2cPort->write(MS5837_ADC_READ);
 		if (_i2cPort->endTransmission() != 0)
 			return logI2CErrorAndRevertToInitialState();
@@ -449,8 +450,12 @@ void MS5837::calculate() {
 	int64_t OFF2 = 0;
 	int64_t SENS2 = 0;
 
-	// Terms called
-	dT = D2_temp-uint32_t(C[5])*256l;
+	// Previous code that has bug
+	// dT = D2_temp-uint32_t(C[5])*256l;
+
+	// Chatgpt argues there is an overflow bug in the previous line
+	dT = (int32_t)D2_temp - (int32_t)C[5] * 256l;
+
 	if ( _model == MS5837_02BA ) {
 		SENS = int64_t(C[1])*65536l+(int64_t(C[3])*dT)/128l;
 		OFF = int64_t(C[2])*131072l+(int64_t(C[4])*dT)/64l;
@@ -482,7 +487,11 @@ void MS5837::calculate() {
 			}
 		}
 		else if((TEMP/100)>=20){    //High temp
-			Ti = 2*(dT*dT)/(137438953472LL);
+			// Ti = 2*(dT*dT)/(137438953472LL);
+			
+			// ChatGPT says there is a potential overflow for temperatures above 20°C
+			Ti = 2*(int64_t(dT)*int64_t(dT))/(137438953472LL);
+
 			OFFi = (1*(TEMP-2000)*(TEMP-2000))/16;
 			SENSi = 0;
 		}
@@ -548,3 +557,51 @@ uint8_t MS5837::crc4(uint16_t n_prom[]) {
 
 	return n_rem ^ 0x00;
 }
+
+/*
+
+
+
+There are several reasons why you haven't seen failures despite the technically incorrect code:
+1. Two's Complement "Rescues" the Calculation
+On your ESP32 (and virtually all modern processors), the unsigned wraparound produces the exact same bit pattern as the correct signed result:
+
+// What actually happens in the hardware:
+uint32_t temp = 7,200,000 - 8,000,000;
+// = 0xFFFF3DC0 (in binary: 11111111111111111111001111000000)
+
+// When assigned to int32_t:
+int32_t dT = temp;  
+// Same bits: 0xFFFF3DC0 
+// Interpreted as signed = -800,000 ✓ (correct!)
+The bit pattern for unsigned 4,294,167,296 is identical to signed -800,000 in two's complement representation. So the math works out correctly!
+
+2. Your Compiler Isn't "Breaking" It (Yet)
+Modern C++ compilers (GCC, Clang) used by PlatformIO for ESP32:
+Generally preserve two's complement semantics even for undefined behavior
+Haven't (yet) applied aggressive optimizations that would break this pattern
+Use predictable conversion rules from unsigned to signed
+
+3. The Bug Only Matters Below Reference Temperature
+The issue only manifests at temperatures below ~20°C. If you've been testing in warmer water or environments, the subtraction would produce positive dT values where there's no unsigned underflow at all.
+
+4. It's Implementation-Defined, Not Undefined
+Actually, I should correct myself: in C++11 and later, converting out-of-range unsigned to signed is implementation-defined (not undefined behavior). Most implementations (including ESP32's GCC) define it to use modulo arithmetic, which preserves two's complement. So on your platform, it's guaranteed to work by the implementation!
+
+Why Fix It Then?
+
+Even though it works reliably on ESP32:
+Code clarity - Future developers (including you) will understand the intent
+Datasheet compliance - Matches MS5837 specification exactly
+Portability - Guaranteed to work everywhere, not just ESP32
+Best practice - Mixing signed/unsigned arithmetic is error-prone in general
+Comment accuracy - Your comment says "ChatGPT argues there is an overflow bug" - 
+it's actually an underflow issue, and while it works, the fix is still cleaner
+Bottom Line
+You haven't seen failures because the code accidentally works correctly on ESP32 
+due to two's complement arithmetic. It's a "happy accident" that the wrong code produces the right answer. Your fix (line 434) makes it explicitly correct rather than accidentally correct.
+
+
+
+
+*/
